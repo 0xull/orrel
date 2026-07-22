@@ -1,6 +1,7 @@
 use crate::opcode::{Class, BPF_LD_IMM_DW};
 
 pub mod opcode;
+pub mod encode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Insn {
