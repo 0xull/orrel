@@ -1,4 +1,4 @@
-# Orrel: eBPF VM and JIT-interpreter
+# Orrel: eBPF VM and JIT-compiler
 
 This is a scratchpad project where I will build, from scratch and in Rust, a complete eBPF execution system with no eBPF virtual-machine or JIT crate underneath it. The finished system has four interlocking components, and they are built in this order because each one earns the right to the next.
 
