@@ -3,5 +3,6 @@ resolver = "2"
 members = [
     "crates/isa",
     "crates/disasm",
-    "crates/isa/fuzz"
+    "crates/isa/fuzz",
+    "crates/interp"
 ]
