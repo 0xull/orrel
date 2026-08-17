@@ -114,6 +114,9 @@ dependencies = [
 [[package]]
 name = "interp"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "isa"
