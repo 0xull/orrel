@@ -5,3 +5,6 @@ edition = "2021"
 
 [dev-dependencies]
 proptest = "1"
+
+[dependencies]
+isa = { path = "../isa" }

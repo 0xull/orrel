@@ -2,6 +2,7 @@
 
 pub const BPF_CLASS_MASK: u8 = 0x07;
 
+// Opcode class
 pub const BPF_LD: u8 = 0x00;
 pub const BPF_LDX: u8 = 0x01;
 pub const BPF_ST: u8 = 0x02;
@@ -17,6 +18,7 @@ pub const BPF_OP_MASK: u8 = 0xf0;
 pub const BPF_SIZE_MASK: u8 = 0x18;
 pub const BPF_MODE_MASK: u8 = 0xe0;
 
+// imm selector
 pub const BPF_W: u8 = 0x00;
 pub const BPF_H: u8 = 0x08;
 pub const BPF_B: u8 = 0x10;
@@ -27,20 +29,48 @@ pub const BPF_IMM: u8 = 0x00;
 pub const BPF_LD_IMM_DW: u8 = BPF_LD | BPF_IMM | BPF_DW;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Class{Ld, Ldx, St, Stx, Alu, Jmp, Jmp32, Alu64}
+pub enum Class {
+    Ld,
+    Ldx,
+    St,
+    Stx,
+    Alu,
+    Jmp,
+    Jmp32,
+    Alu64,
+}
 
-impl Class{
+impl Class {
     pub fn from_opcode(opcode: u8) -> Class {
         match opcode & BPF_CLASS_MASK {
             BPF_LD => Class::Ld,
             BPF_LDX => Class::Ldx,
-            BPF_ST=> Class::St,
+            BPF_ST => Class::St,
             BPF_STX => Class::Stx,
             BPF_ALU => Class::Alu,
             BPF_JMP => Class::Jmp,
             BPF_JMP32 => Class::Jmp32,
             BPF_ALU64 => Class::Alu64,
-            _ => unreachable!("the class field is only 3 bits wide")
+            _ => unreachable!("the class field is only 3 bits wide"),
         }
     }
 }
+
+// ALU / ALU64 operation code (high nibble of the opcode byte).
+pub const BPF_ADD: u8 = 0x00;
+pub const BPF_SUB: u8 = 0x10;
+pub const BPF_MUL: u8 = 0x20;
+pub const BPF_DIV: u8 = 0x30;
+pub const BPF_OR: u8 = 0x40;
+pub const BPF_AND: u8 = 0x50;
+pub const BPF_LSH: u8 = 0x60;
+pub const BPF_RSH: u8 = 0x70;
+pub const BPF_NEG: u8 = 0x80;
+pub const BPF_MOD: u8 = 0x90;
+pub const BPF_XOR: u8 = 0xa0;
+pub const BPF_MOV: u8 = 0xb0;
+pub const BPF_ARSH: u8 = 0xc0;
+pub const BPF_END: u8 = 0xd0; // endianess
+
+// JMP operation code
+pub const BPF_EXIT: u8 = 0x90;
