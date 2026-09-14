@@ -1,11 +1,15 @@
-use interp::{FRAME_PTR, FRAME_TOP, Vm, VmError};
+use interp::{Vm, VmError, FRAME_PTR, FRAME_TOP};
 
 fn main() {
     let mut vm = Vm::new();
 
     println!("program-entry register file");
     for i in 0..=FRAME_PTR {
-        let tag = if i == FRAME_PTR { "  <- read-only frame pointer" } else { "" };
+        let tag = if i == FRAME_PTR {
+            "  <- read-only frame pointer"
+        } else {
+            ""
+        };
         println!("  r{i:<2} = 0x{:016x}{tag}", vm.reg(i).unwrap());
     }
 

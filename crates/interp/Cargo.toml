@@ -7,4 +7,5 @@ edition = "2021"
 proptest = "1"
 
 [dependencies]
+proptest = "1"
 isa = { path = "../isa" }

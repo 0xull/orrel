@@ -1,13 +1,13 @@
 //! Property test for the below register-file trichotomy.
-//! 
+//!
 //! For every register index in 0..=15 and every 64-bit value, the accessors
 //! place operations into exactly one of three outcomes:
 //! - round-trip for a general register,
 //! - read-only rejection for the frame pointer, or
 //! - bad-register rejection for an index that names no real register.
 
+use interp::{Vm, VmError, FRAME_PTR, FRAME_TOP, NUM_REGS};
 use proptest::prelude::*;
-use interp::{FRAME_PTR, FRAME_TOP, NUM_REGS, Vm, VmError};
 
 proptest! {
     #[test]
@@ -45,7 +45,7 @@ proptest! {
                 vm.reg(other).unwrap(),
                 expected,
                 "writing r{} affected r{}",
-                target, 
+                target,
                 other,
             );
         }
