@@ -7,8 +7,8 @@ pub mod encode;
 pub struct Insn {
     pub slot: usize,
     pub opcode: u8,
-    pub src: u8,
-    pub dst: u8,
+    pub src: u8, // 4-7 nibble
+    pub dst: u8, // 0-3 nibble
     pub offset: i16,
     pub imm: i32,
     pub imm64: Option<i64>,

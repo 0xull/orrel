@@ -18,6 +18,7 @@ pub enum VmError {
     BadRegister(usize),
     WriteToFramePointer,
     NoExit,
+    OutOfBound(u64, usize),
     Unimplemented(u8),
 }
 
@@ -70,6 +71,18 @@ impl Vm {
             match insn.class() {
                 Class::Alu | Class::Alu64 => {
                     self.exec_alu(insn)?;
+                    pc += 1;
+                }
+                Class::Ld => {
+                    self.exec_ld(insn)?;
+                    pc += 1;
+                }
+                Class::Ldx => {
+                    self.exec_ldx(insn)?;
+                    pc += 1;
+                }
+                Class::St | Class::Stx => {
+                    self.exec_store(insn)?;
                     pc += 1;
                 }
                 Class::Jmp if (insn.opcode & BPF_OP_MASK) == BPF_EXIT => {
@@ -225,6 +238,95 @@ impl Vm {
             self.set_reg(dst_i, res32 as u64)
         }
     }
+
+    fn exec_ld(&mut self, insn: &Insn) -> Result<(), VmError> {
+        if insn.opcode == BPF_LD_IMM_DW && insn.src == 0 {
+            let v = insn.imm64.ok_or(VmError::Unimplemented(insn.opcode))?;
+            self.set_reg(insn.dst as usize, v as u64)
+        } else {
+            Err(VmError::Unimplemented(insn.opcode))
+        }
+    }
+
+    fn exec_ldx(&mut self, insn: &Insn) -> Result<(), VmError> {
+        let mode = insn.opcode & BPF_MODE_MASK;
+        let size = size_bytes(insn.opcode);
+        let base = self.reg(insn.src as usize)?;
+        let addr = base.wrapping_add(insn.offset as i64 as u64);
+        let raw = self.mem_read(addr, size)?;
+        let val = if mode == BPF_MEMSX {
+            sign_extend_load(raw, size)
+        } else {
+            raw
+        };
+        self.set_reg(insn.dst as usize, val)
+    }
+
+    fn exec_store(&mut self, insn: &Insn) -> Result<(), VmError> {
+        let size = size_bytes(insn.opcode);
+        let base = self.reg(insn.dst as usize)?;
+        let addr = base.wrapping_add(insn.offset as i64 as u64);
+        let val = match insn.class() {
+            Class::Stx => self.reg(insn.src as usize)?,
+            Class::St => (insn.imm as i64) as u64,
+            _ => unreachable!(),
+        };
+        self.mem_write(addr, size, val)
+    }
+
+    // Translate a virtual address to a stack-buffer offset, checking bounds.
+    fn translate(&self, addr: u64, size: usize) -> Result<usize, VmError> {
+        let end = addr
+            .checked_add(size as u64)
+            .ok_or(VmError::OutOfBound(addr, size))?;
+        if addr >= STACK_BASE && end <= FRAME_TOP {
+            Ok((addr - STACK_BASE) as usize)
+        } else {
+            Err(VmError::OutOfBound(addr, size))
+        }
+    }
+
+    fn mem_read(&self, addr: u64, size: usize) -> Result<u64, VmError> {
+        let off = self.translate(addr, size)?;
+        let mut buf = [0u8; 8];
+        buf[..size].copy_from_slice(&self.stack[off..off + size]);
+
+        // zero-extended for size < 8
+        #[cfg(target_endian = "little")]
+        {
+            Ok(u64::from_le_bytes(buf))
+        }
+        #[cfg(target_endian = "big")]
+        {
+            Ok(u64::from_be_bytes(buf))
+        }
+    }
+
+    fn mem_write(&mut self, addr: u64, size: usize, val: u64) -> Result<(), VmError> {
+        let off = self.translate(addr, size)?;
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = val.to_le_bytes();
+            self.stack[off..off + size].copy_from_slice(&bytes[..size]);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            let bytes = val.to_be_bytes();
+            self.stack[off..off + size].copy_from_slice(&bytes[..size]);
+        }
+
+        Ok(())
+    }
+}
+
+fn size_bytes(opcode: u8) -> usize {
+    match opcode & BPF_SIZE_MASK {
+        BPF_B => 1,
+        BPF_H => 2,
+        BPF_W => 4,
+        BPF_DW => 8,
+        _ => unreachable!(),
+    }
 }
 
 #[cfg(target_endian = "little")]
@@ -272,8 +374,19 @@ fn sign_extend(v: u64, bits: i16) -> Result<i64, VmError> {
     }
 }
 
+fn sign_extend_load(raw: u64, size: usize) -> u64 {
+    match size {
+        1 => (raw as u8 as i8) as i64 as u64,
+        2 => (raw as u16 as i16) as i64 as u64,
+        4 => (raw as u32 as i32) as i64 as u64,
+        _ => raw,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use isa::decode;
+
     use super::*;
 
     #[test]
@@ -466,5 +579,73 @@ mod tests {
         let prog = isa::decode(code).unwrap();
         let mut vm = Vm::new();
         assert_eq!(vm.run(&prog), Err(VmError::NoExit));
+    }
+
+    #[test]
+    fn dword_round_trip() {
+        let mut vm = Vm::new();
+        vm.set_reg(1, 0x0102_0304_0506_0708).unwrap();
+        vm.exec_store(&ins(BPF_STX | BPF_DW | BPF_MEM, 10, 1, -8, 0))
+            .unwrap();
+        vm.exec_ldx(&ins(BPF_LDX | BPF_DW | BPF_MEM, 0, 10, -8, 0))
+            .unwrap();
+        assert_eq!(vm.reg(0).unwrap(), 0x0102_0304_0506_0708);
+    }
+
+    #[test]
+    fn byte_load_is_zero_extended_and_endianness() {
+        let mut vm = Vm::new();
+        vm.set_reg(1, 0x0102_0304_0506_0708).unwrap();
+        vm.exec_store(&ins(BPF_STX | BPF_DW | BPF_MEM, 10, 1, -8, 0))
+            .unwrap();
+        vm.exec_ldx(&ins(BPF_LDX | BPF_B | BPF_MEM, 0, 10, -8, 0))
+            .unwrap();
+        assert_eq!(vm.reg(0).unwrap(), 0x0000_0000_0000_0008);
+    }
+
+    #[test]
+    fn memsx_byte_load_sign_extends() {
+        let mut vm = Vm::new();
+        vm.set_reg(1, 0xff).unwrap();
+        vm.exec_store(&ins(BPF_STX | BPF_B | BPF_MEM, 10, 1, -1, 0))
+            .unwrap();
+        vm.exec_ldx(&ins(BPF_LDX | BPF_B | BPF_MEMSX, 0, 10, -1, 0))
+            .unwrap();
+        assert_eq!(vm.reg(0).unwrap(), 0xffff_ffff_ffff_ffff);
+    }
+
+    #[test]
+    fn store_immediate() {
+        let mut vm = Vm::new();
+        vm.exec_store(&ins(BPF_ST | BPF_W | BPF_MEM, 10, 0, -4, -1))
+            .unwrap();
+        vm.exec_ldx(&ins(BPF_LDX | BPF_W | BPF_MEM, 0, 10, -4, 0))
+            .unwrap();
+        assert_eq!(vm.reg(0).unwrap(), 0x0000_0000_ffff_ffff);
+    }
+
+    #[test]
+    fn out_of_bounds_is_rejected() {
+        let mut vm = Vm::new();
+        assert_eq!(
+            vm.exec_store(&ins(BPF_ST | BPF_DW | BPF_MEM, 10, 0, 0, 0)),
+            Err(VmError::OutOfBound(FRAME_TOP, 8)),
+        );
+        assert_eq!(
+            vm.exec_ldx(&ins(BPF_LDX | BPF_B | BPF_MEM, 0, 10, -513, 0)),
+            Err(VmError::OutOfBound(STACK_BASE - 1, 1)),
+        );
+    }
+
+    #[test]
+    fn lddw_loads_constant() {
+        let code: &[u8] = &[
+            0x18, 0x01, 0x00, 0x00, 0x0d, 0xf0, 0xfe, 0xca, 0x00, 0x00, 0x00, 0x00, 0xef, 0xbe,
+            0xad, 0xde, 0xbf, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+        let prog = decode(code).unwrap();
+        let mut vm = Vm::new();
+        assert_eq!(vm.run(&prog).unwrap(), 0xdead_beef_cafe_f00d);
     }
 }

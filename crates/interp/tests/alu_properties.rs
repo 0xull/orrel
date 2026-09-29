@@ -160,6 +160,14 @@ proptest! {
 #[test]
 fn sdiv_overflow_wraps_not_panics() {
     let mn = 0x8000_0000_0000_0000u64;
-    let got = eval_alu(BPF_ALU64 | BPF_DIV | BPF_SRC_MASK, 3, 2, 1, 0, mn, (-1i64) as u64);
+    let got = eval_alu(
+        BPF_ALU64 | BPF_DIV | BPF_SRC_MASK,
+        3,
+        2,
+        1,
+        0,
+        mn,
+        (-1i64) as u64,
+    );
     assert_eq!(got, mn, "SDIV MIN / -1 must wrap to MIN");
 }

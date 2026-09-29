@@ -18,13 +18,15 @@ pub const BPF_OP_MASK: u8 = 0xf0;
 pub const BPF_SIZE_MASK: u8 = 0x18;
 pub const BPF_MODE_MASK: u8 = 0xe0;
 
-// imm selector
+// LD/ST size selector
 pub const BPF_W: u8 = 0x00;
 pub const BPF_H: u8 = 0x08;
 pub const BPF_B: u8 = 0x10;
 pub const BPF_DW: u8 = 0x18;
 
 pub const BPF_IMM: u8 = 0x00;
+pub const BPF_MEM: u8 = 0x60;
+pub const BPF_MEMSX: u8 = 0x80;
 
 pub const BPF_LD_IMM_DW: u8 = BPF_LD | BPF_IMM | BPF_DW;
 
